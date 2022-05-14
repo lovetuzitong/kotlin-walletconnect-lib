@@ -54,7 +54,9 @@ class OkHttpTransport(
             socket?.let { s ->
                 queue.poll()?.let {
                     tryExec {
-                        s.send(adapter.toJson(it.toMap()))
+                        val data = adapter.toJson(it.toMap())
+                        println("WebSocketListener::sent data($data)")
+                        s.send(data)
                     }
                     drainQueue() // continue draining until there are no more messages
                 }
@@ -68,7 +70,8 @@ class OkHttpTransport(
         mapOf(
             "topic" to topic,
             "type" to type,
-            "payload" to payload
+            "payload" to payload,
+            "silent" to silent
         )
 
     override fun close() {
@@ -76,6 +79,7 @@ class OkHttpTransport(
     }
 
     override fun onOpen(webSocket: WebSocket, response: Response) {
+        println("WebSocketListener::onOpen(webSocket: WebSocket, response: Response)")
         super.onOpen(webSocket, response)
         connected = true
         drainQueue()
@@ -83,6 +87,7 @@ class OkHttpTransport(
     }
 
     override fun onMessage(webSocket: WebSocket, text: String) {
+        println("WebSocketListener::onMessage(${text})")
         super.onMessage(webSocket, text)
         tryExec {
             adapter.fromJson(text)?.toMessage()?.let { messageHandler(it) }
@@ -93,16 +98,18 @@ class OkHttpTransport(
         val topic = get("topic")?.toString() ?: return null
         val type = get("type")?.toString() ?: return null
         val payload = get("payload")?.toString() ?: return null
-        return Session.Transport.Message(topic, type, payload)
+        return Session.Transport.Message(topic, type, payload, true)
     }
 
     override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+        println("WebSocketListener::onFailure(${t.message})")
         super.onFailure(webSocket, t, response)
         statusHandler(Error(t))
         disconnected()
     }
 
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+        println("WebSocketListener::onClosed(webSocket: WebSocket, code: ${code}, reason: ${reason})")
         super.onClosed(webSocket, code, reason)
         disconnected()
     }

@@ -85,12 +85,14 @@ class WCSession(
 
     override fun approvedAccounts(): List<String>? = approvedAccounts
 
+    override fun chainId(): Long?  = chainId
+
     override fun init() {
         if (transport.connect()) {
             // Register for all messages for this client
             transport.send(
                     Session.Transport.Message(
-                            config.handshakeTopic, "sub", ""
+                            config.handshakeTopic, "sub", "", true
                     )
             )
         }
@@ -162,7 +164,7 @@ class WCSession(
                 // Register for all messages for this client
                 transport.send(
                     Session.Transport.Message(
-                        clientData.id, "sub", ""
+                        clientData.id, "sub", "", true
                     )
                 )
             }
@@ -208,6 +210,11 @@ class WCSession(
                 accountToCheck = data.address
             }
             is Session.MethodCall.Response -> {
+                transport.send(
+                    Session.Transport.Message(
+                        clientData.id, "ack", "", true
+                    )
+                )
                 val callback = requests[data.id] ?: return
                 callback(data)
             }
@@ -271,7 +278,16 @@ class WCSession(
         callback?.let {
             requests[msg.id()] = callback
         }
-        transport.send(Session.Transport.Message(topic, "pub", payload))
+
+        var silent = true
+
+        if(msg is Session.MethodCall.SendTransaction){
+            println("sendTransaction: topic=${topic}")
+            silent = false
+        }
+
+        transport.send(Session.Transport.Message(topic, "pub", payload, silent))
+
         return true
     }
 

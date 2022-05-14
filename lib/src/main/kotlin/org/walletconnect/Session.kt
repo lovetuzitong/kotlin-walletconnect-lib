@@ -17,6 +17,7 @@ interface Session {
 
     fun peerMeta(): PeerMeta?
     fun approvedAccounts(): List<String>?
+    fun chainId(): Long?
 
     fun approveRequest(id: Long, response: Any)
     fun rejectRequest(id: Long, errorCode: Long, errorMsg: String)
@@ -110,7 +111,8 @@ interface Session {
         data class Message(
                 val topic: String,
                 val type: String,
-                val payload: String
+                val payload: String,
+                val silent: Boolean
         )
 
         interface Builder {
@@ -149,7 +151,7 @@ interface Session {
 
         data class SignMessage(val id: Long, val address: String, val message: String) : MethodCall(id)
 
-        data class Custom(val id: Long, val method: String, val params: List<*>?) : MethodCall(id)
+        data class Custom(val id: Long, val method: String, val params: Any? = null) : MethodCall(id)
 
         data class Response(val id: Long, val result: Any?, val error: Error? = null) : MethodCall(id)
     }

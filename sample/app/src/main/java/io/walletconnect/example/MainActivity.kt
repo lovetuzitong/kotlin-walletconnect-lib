@@ -34,10 +34,13 @@ class MainActivity : Activity(), Session.Callback {
     }
     private fun sessionApproved() {
         uiScope.launch {
-            screen_main_status.text = "Connected: ${ExampleApplication.session.approvedAccounts()}"
+            screen_main_status.text = "Connected Network: ${ExampleApplication.session.chainId()}\n Accounts: ${ExampleApplication.session.approvedAccounts()}"
             screen_main_connect_button.visibility = View.GONE
             screen_main_disconnect_button.visibility = View.VISIBLE
             screen_main_tx_button.visibility = View.VISIBLE
+            screen_main_add_network.visibility = View.VISIBLE
+            screen_main_watch_asserts.visibility = View.VISIBLE
+            screen_main_gas_price.visibility = View.VISIBLE
         }
     }
 
@@ -47,6 +50,9 @@ class MainActivity : Activity(), Session.Callback {
             screen_main_connect_button.visibility = View.VISIBLE
             screen_main_disconnect_button.visibility = View.GONE
             screen_main_tx_button.visibility = View.GONE
+            screen_main_add_network.visibility = View.GONE
+            screen_main_watch_asserts.visibility = View.GONE
+            screen_main_gas_price.visibility = View.GONE
         }
     }
 
@@ -55,15 +61,19 @@ class MainActivity : Activity(), Session.Callback {
         setContentView(R.layout.screen_main)
     }
 
+    private fun openWallet(){
+        val i = Intent(Intent.ACTION_VIEW)
+        i.data = Uri.parse(ExampleApplication.config.toWCUri())
+        startActivity(i)
+    }
+
     override fun onStart() {
         super.onStart()
         initialSetup()
         screen_main_connect_button.setOnClickListener {
             ExampleApplication.resetSession()
             ExampleApplication.session.addCallback(this)
-            val i = Intent(Intent.ACTION_VIEW)
-            i.data = Uri.parse(ExampleApplication.config.toWCUri())
-            startActivity(i)
+            openWallet()
         }
         screen_main_disconnect_button.setOnClickListener {
             ExampleApplication.session.kill()
@@ -76,16 +86,68 @@ class MainActivity : Activity(), Session.Callback {
                     Session.MethodCall.SendTransaction(
                             txRequest,
                             from,
-                            "0x24EdA4f7d0c466cc60302b9b5e9275544E5ba552",
+                            "0xc7e5463a2646A7611c961537400448BE54ae1733",
                             null,
                             null,
                             null,
-                            "0x5AF3107A4000",
-                            ""
+                            "0x9184e72a",
+                            "0x"
                     ),
                     ::handleResponse
             )
             this.txRequest = txRequest
+            openWallet()
+        }
+        screen_main_add_network.setOnClickListener {
+            ExampleApplication.session.performMethodCall(
+                Session.MethodCall.Custom(
+                    10001,
+                    "wallet_addEthereumChain",
+                    listOf(mapOf(
+                        "chainId" to "0x13881",
+                        "chainName" to "Polygon Mumbai Testnet",
+                        "rpcUrls" to listOf("https://matic-mumbai.chainstacklabs.com"),
+                        "nativeCurrency" to mapOf(
+                            "name" to "Polygon MATIC",
+                            "symbol" to "MATIC",
+                            "decimals" to 18
+                        ),
+                        "blockExplorerUrls" to listOf("https://mumbai.polygonscan.com/")
+                    ))
+                ),
+                ::handleResponse
+            )
+            openWallet()
+        }
+
+        screen_main_watch_asserts.setOnClickListener {
+            val params = mapOf(
+                "type" to "ERC20",
+                "options" to mapOf(
+                    "address" to "0x1565544dA78F37D166334D697B966b1eC04428e4",
+                    "symbol" to "TsT",
+                    "decimals" to 18
+                )
+            )
+            ExampleApplication.session.performMethodCall(
+                Session.MethodCall.Custom(
+                    10002,
+                    "wallet_watchAsset",
+                    params
+                ),
+                ::handleResponse
+            )
+            openWallet()
+        }
+
+        screen_main_gas_price.setOnClickListener {
+            ExampleApplication.session.performMethodCall(
+                Session.MethodCall.Custom(
+                    10003,
+                    "eth_gasPrice"
+                ),
+                ::handleResponse
+            )
         }
     }
 
@@ -101,6 +163,16 @@ class MainActivity : Activity(), Session.Callback {
             uiScope.launch {
                 screen_main_response.visibility = View.VISIBLE
                 screen_main_response.text = "Last response: " + ((resp.result as? String) ?: "Unknown response")
+            }
+        }else if(resp.id == 10001.toLong()){
+            uiScope.launch {
+                screen_main_response.visibility = View.VISIBLE
+                screen_main_response.text = "Last response: " + ((resp.result as? String) ?: "Unknown response")
+            }
+        }else if(resp.id == 10003.toLong()){
+            uiScope.launch {
+                screen_main_response.visibility = View.VISIBLE
+                screen_main_response.text = "Gas Price = ${resp.result}"
             }
         }
     }

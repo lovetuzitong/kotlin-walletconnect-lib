@@ -36,4 +36,26 @@
         android:layout_height="64dp"
         android:text="Disonnect"
         android:visibility="gone" />
+
+    <Button
+        android:id="@+id/screen_main_add_network"
+        android:layout_width="wrap_content"
+        android:layout_height="64dp"
+        android:text="Add Polygon Mumbai Chain"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/screen_main_watch_asserts"
+        android:layout_width="wrap_content"
+        android:layout_height="64dp"
+        android:text="Add ERC20 Token"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/screen_main_gas_price"
+        android:layout_width="wrap_content"
+        android:layout_height="64dp"
+        android:text="Get Gas Price"
+        android:visibility="gone" />
+
 </LinearLayout>

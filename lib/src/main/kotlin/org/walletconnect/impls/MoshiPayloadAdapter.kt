@@ -33,61 +33,89 @@ class MoshiPayloadAdapter(moshi: Moshi) : Session.PayloadAdapter {
     override fun parse(payload: String, key: String): Session.MethodCall {
         val encryptedPayload = payloadAdapter.fromJson(payload) ?: throw IllegalArgumentException("Invalid json payload!")
 
-        // TODO verify hmac
+        val encryptedData = decode(encryptedPayload.data)
+        val keyData = decode(key)
+        val ivData = decode(encryptedPayload.iv)
 
+        // verify hmac
+        val computedHmac = computeHmac(encryptedData, keyData, ivData)
+        if(!encryptedPayload.hmac.equals(computedHmac, ignoreCase = true))
+            throw IllegalArgumentException("Invalid HMAC in payload!")
+
+        val data = decryptData(
+            encryptedData,
+            keyData,
+            ivData
+        )
+
+        return data.toMethodCall()
+    }
+
+    override fun prepare(data: Session.MethodCall, key: String): String {
+        val bytesData = data.toBytes()
+        println("request: ${String(bytesData)}")
+        val hexKey = decode(key)
+        val iv = createRandomBytes(16)
+
+        val encryptedDataBytes = encryptData(bytesData, hexKey, iv)
+
+        val hmac = computeHmac(encryptedDataBytes, hexKey, iv)
+
+        return payloadAdapter.toJson(
+            EncryptedPayload(
+                encryptedDataBytes.toNoPrefixHexString(),
+                hmac = hmac,
+                iv = iv.toNoPrefixHexString()
+            )
+        )
+    }
+
+    private fun decryptData(data: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
         val padding = PKCS7Padding()
         val aes = PaddedBufferedBlockCipher(
             CBCBlockCipher(AESEngine()),
             padding
         )
         val ivAndKey = ParametersWithIV(
-            KeyParameter(decode(key)),
-            decode(encryptedPayload.iv)
+            KeyParameter(key),
+            iv
         )
         aes.init(false, ivAndKey)
 
-        val encryptedData = decode(encryptedPayload.data)
-        val minSize = aes.getOutputSize(encryptedData.size)
+        val minSize = aes.getOutputSize(data.size)
         val outBuf = ByteArray(minSize)
-        var len = aes.processBytes(encryptedData, 0, encryptedData.size, outBuf, 0)
+        var len = aes.processBytes(data, 0, data.size, outBuf, 0)
         len += aes.doFinal(outBuf, len)
 
-        return outBuf.copyOf(len).toMethodCall()
+        return outBuf.copyOf(len)
     }
 
-    override fun prepare(data: Session.MethodCall, key: String): String {
-        val bytesData = data.toBytes()
-        val hexKey = decode(key)
-        val iv = createRandomBytes(16)
-
+    private fun encryptData(data: ByteArray, key: ByteArray, iv: ByteArray): ByteArray {
         val padding = PKCS7Padding()
         val aes = PaddedBufferedBlockCipher(
             CBCBlockCipher(AESEngine()),
             padding
         )
-        aes.init(true, ParametersWithIV(KeyParameter(hexKey), iv))
+        aes.init(true, ParametersWithIV(KeyParameter(key), iv))
 
-        val minSize = aes.getOutputSize(bytesData.size)
+        val minSize = aes.getOutputSize(data.size)
         val outBuf = ByteArray(minSize)
-        val length1 = aes.processBytes(bytesData, 0, bytesData.size, outBuf, 0)
+        val length1 = aes.processBytes(data, 0, data.size, outBuf, 0)
         aes.doFinal(outBuf, length1)
 
+        return outBuf
+    }
 
+    private fun computeHmac(data: ByteArray, key: ByteArray, iv: ByteArray): String {
         val hmac = HMac(SHA256Digest())
-        hmac.init(KeyParameter(hexKey))
+        hmac.init(KeyParameter(key))
 
         val hmacResult = ByteArray(hmac.macSize)
-        hmac.update(outBuf, 0, outBuf.size)
+        hmac.update(data, 0, data.size)
         hmac.update(iv, 0, iv.size)
         hmac.doFinal(hmacResult, 0)
 
-        return payloadAdapter.toJson(
-            EncryptedPayload(
-                outBuf.toNoPrefixHexString(),
-                hmac = hmacResult.toNoPrefixHexString(),
-                iv = iv.toNoPrefixHexString()
-            )
-        )
+        return hmacResult.toNoPrefixHexString()
     }
 
     /**
@@ -95,6 +123,7 @@ class MoshiPayloadAdapter(moshi: Moshi) : Session.PayloadAdapter {
      */
     private fun ByteArray.toMethodCall(): Session.MethodCall =
         String(this).let { json ->
+            println("parse: $json")
             mapAdapter.fromJson(json)?.let {
                 try {
                     val method = it["method"]
@@ -144,7 +173,7 @@ class MoshiPayloadAdapter(moshi: Moshi) : Session.PayloadAdapter {
 
     private fun Map<String, *>.toCustom(): Session.MethodCall.Custom {
         val method = this["method"] as? String ?: throw IllegalArgumentException("method missing")
-        val params = this["params"] as? List<*>
+        val params = this["params"]
         return Session.MethodCall.Custom(getId(), method, params)
     }
 
@@ -208,8 +237,8 @@ class MoshiPayloadAdapter(moshi: Moshi) : Session.PayloadAdapter {
         }
 
     private fun Session.MethodCall.Custom.toMap() =
-        jsonRpcWithList(
-            id, method, params ?: emptyList<Any>()
+        jsonRpcWithObject(
+            id, method, params
         )
 
     private fun jsonRpc(id: Long, method: String, vararg params: Any) =
@@ -221,6 +250,14 @@ class MoshiPayloadAdapter(moshi: Moshi) : Session.PayloadAdapter {
             "jsonrpc" to "2.0",
             "method" to method,
             "params" to params
+        )
+
+    private fun jsonRpcWithObject(id: Long, method: String, params: Any?) =
+        mapOf(
+            "id" to id,
+            "jsonrpc" to "2.0",
+            "method" to method,
+            "params" to (params ?: emptyList<Any>())
         )
 
     // TODO: @JsonClass(generateAdapter = true)
